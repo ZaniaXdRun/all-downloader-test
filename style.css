@@ -1,0 +1,320 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    min-height: 100vh;
+    background: transparent;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* Container utama */
+.downloader-container {
+    max-width: 600px;
+    width: 100%;
+    background: rgba(10, 20, 30, 0.75);
+    backdrop-filter: blur(20px);
+    border-radius: 32px;
+    padding: 30px 24px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 255, 255, 0.2);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+/* Header */
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.logo {
+    font-size: 48px;
+    margin-bottom: 12px;
+    display: inline-block;
+    background: linear-gradient(135deg, #00ffcc, #00ccff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+}
+
+h1 {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #00ffcc, #00ccff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.5px;
+}
+
+.subtitle {
+    color: rgba(0, 255, 255, 0.7);
+    font-size: 14px;
+    margin-top: 8px;
+    font-weight: 500;
+}
+
+/* Platform selector */
+.platform-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.platform-btn {
+    background: rgba(0, 255, 255, 0.08);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    padding: 10px 20px;
+    border-radius: 60px;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(0, 255, 255, 0.8);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.platform-btn i {
+    font-size: 16px;
+}
+
+.platform-btn.active {
+    background: linear-gradient(135deg, #00ffcc, #00ccff);
+    border-color: transparent;
+    color: #0a1a1a;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+}
+
+.platform-btn:hover:not(.active) {
+    background: rgba(0, 255, 255, 0.15);
+    border-color: rgba(0, 255, 255, 0.5);
+    transform: translateY(-2px);
+}
+
+/* Input area */
+.input-group {
+    margin-bottom: 20px;
+}
+
+.input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-wrapper i {
+    position: absolute;
+    left: 18px;
+    color: #00ccff;
+    font-size: 18px;
+}
+
+input {
+    width: 100%;
+    padding: 16px 20px 16px 52px;
+    background: rgba(0, 20, 30, 0.6);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 60px;
+    font-size: 15px;
+    color: #fff;
+    font-family: 'Inter', monospace;
+    transition: all 0.3s ease;
+}
+
+input:focus {
+    outline: none;
+    border-color: #00ffcc;
+    box-shadow: 0 0 0 3px rgba(0, 255, 255, 0.2);
+    background: rgba(0, 30, 40, 0.8);
+}
+
+input::placeholder {
+    color: rgba(0, 255, 255, 0.4);
+}
+
+/* Download button */
+.download-btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, #00ffcc, #00ccff);
+    border: none;
+    border-radius: 60px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0a1a1a;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.download-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px -8px rgba(0, 255, 255, 0.5);
+}
+
+.download-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Loading */
+.loading {
+    display: none;
+    text-align: center;
+    padding: 20px;
+    color: #00ccff;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(0, 255, 255, 0.2);
+    border-top-color: #00ffcc;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Result area */
+.result-area {
+    display: none;
+    margin-top: 20px;
+    background: rgba(0, 255, 255, 0.05);
+    border-radius: 24px;
+    padding: 20px;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.result-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #00ffcc;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.result-content {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* Video list items */
+.video-item {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(0, 255, 255, 0.1);
+}
+
+.video-item:hover {
+    border-color: rgba(0, 255, 255, 0.4);
+    transform: translateX(4px);
+}
+
+.video-quality {
+    min-width: 70px;
+    background: rgba(0, 255, 255, 0.15);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #00ffcc;
+    text-align: center;
+}
+
+.video-info {
+    flex: 1;
+}
+
+.video-size {
+    font-size: 11px;
+    color: rgba(0, 255, 255, 0.6);
+}
+
+.download-icon {
+    color: #00ffcc;
+    font-size: 20px;
+}
+
+/* Error message */
+.error-message {
+    background: rgba(255, 68, 68, 0.15);
+    border: 1px solid rgba(255, 68, 68, 0.4);
+    border-radius: 16px;
+    padding: 14px;
+    color: #ff6666;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Footer */
+.footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12px;
+    color: rgba(0, 255, 255, 0.4);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 255, 255, 0.5);
+    border-radius: 10px;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .downloader-container {
+        padding: 20px 16px;
+    }
+    
+    .platform-btn {
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+    
+    h1 {
+        font-size: 24px;
+    }
+    
+    .logo {
+        font-size: 40px;
+    }
+}
