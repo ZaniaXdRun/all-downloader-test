@@ -1,15 +1,13 @@
 // Konfigurasi
 const API_BASE = 'https://api.vreden.my.id/api';
-
-const platformEndpoints = {
-    tiktok: '/download/tiktok',
-    instagram: '/download/instagram',
-    youtube: '/download/youtube',
-    facebook: '/download/facebook',
-    twitter: '/download/twitter'
-};
+const CORS_PROXIES = [
+    'https://cors-anywhere.herokuapp.com/',
+    'https://api.allorigins.win/raw?url=',
+    'https://thingproxy.freeboard.io/fetch/'
+];
 
 let currentPlatform = 'tiktok';
+let currentProxyIndex = 0;
 
 // DOM Elements
 const platformBtns = document.querySelectorAll('.platform-chip');
@@ -30,12 +28,54 @@ platformBtns.forEach(btn => {
     });
 });
 
+// Fetch dengan CORS proxy dan retry
+async function fetchWithProxy(url, retries = 2) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            let fetchUrl = url;
+            
+            // Pake proxy kalo langsung gagal
+            if (i > 0) {
+                const proxy = CORS_PROXIES[currentProxyIndex % CORS_PROXIES.length];
+                fetchUrl = proxy + encodeURIComponent(url);
+                currentProxyIndex++;
+                console.log(`🔄 Using proxy: ${proxy}`);
+            }
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            const response = await fetch(fetchUrl, {
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'application/json',
+                    'Origin': window.location.origin
+                }
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            return data;
+            
+        } catch (error) {
+            console.log(`Attempt ${i + 1} failed:`, error.message);
+            if (i === retries) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+}
+
 // Download handler
 downloadBtn.addEventListener('click', async () => {
     const url = urlInput.value.trim();
     
     if (!url) {
-        showError('Masukkan link video terlebih dahulu');
+        showError('🔗 Masukkan link video terlebih dahulu');
         return;
     }
 
@@ -48,10 +88,10 @@ downloadBtn.addEventListener('click', async () => {
         const endpoint = platformEndpoints[currentPlatform];
         const apiUrl = `${API_BASE}${endpoint}?url=${encodeURIComponent(url)}`;
         
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-
-        console.log('Response:', data);
+        console.log('📡 Fetching:', apiUrl);
+        
+        const data = await fetchWithProxy(apiUrl);
+        console.log('✅ Response:', data);
 
         if (data.status === true && data.result) {
             displayResult(data.result);
@@ -59,31 +99,86 @@ downloadBtn.addEventListener('click', async () => {
             displayResult(data.data);
         } else if (data.result) {
             displayResult(data.result);
+        } else if (data.video) {
+            displayResult(data);
         } else {
-            showError(data.message || 'Gagal memproses link');
+            showError(`⚠️ Gagal: ${data.message || 'Format response tidak dikenali'}`);
         }
         
     } catch (error) {
-        console.error('Error:', error);
-        showError('Koneksi error. Cek internet atau coba lagi');
+        console.error('❌ Error:', error);
+        
+        // Coba fallback ke API alternatif
+        try {
+            showToast('Mencoba server cadangan...');
+            const fallbackData = await fallbackFetch(url);
+            if (fallbackData) {
+                displayResult(fallbackData);
+                return;
+            }
+        } catch (e) {
+            console.log('Fallback failed:', e);
+        }
+        
+        showError('⚠️ Gagal konek ke server. Coba lagi nanti atau cek internet.');
     } finally {
         loading.style.display = 'none';
         downloadBtn.disabled = false;
     }
 });
 
-// Display result - KHUSUS UNTUK FORMAT TIKTOK
+// Fallback API (TikWM langsung pake proxy)
+async function fallbackFetch(url) {
+    const tikwmUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
+    const proxyUrl = `https://cors-anywhere.herokuapp.com/${tikwmUrl}`;
+    
+    try {
+        const response = await fetch(proxyUrl, {
+            headers: {
+                'Origin': 'https://www.tikwm.com'
+            }
+        });
+        const data = await response.json();
+        
+        if (data.code === 0 && data.data) {
+            return {
+                title: data.data.title,
+                cover: data.data.cover,
+                duration: data.data.duration,
+                author: data.data.author,
+                data: [
+                    { type: 'nowatermark', url: data.data.play },
+                    { type: 'nowatermark_hd', url: data.data.hdplay },
+                    { type: 'music', url: data.data.music }
+                ]
+            };
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+// Platform endpoints
+const platformEndpoints = {
+    tiktok: '/download/tiktok',
+    instagram: '/download/instagram',
+    youtube: '/download/youtube',
+    facebook: '/download/facebook',
+    twitter: '/download/twitter'
+};
+
+// Display result
 function displayResult(data) {
     resultArea.style.display = 'block';
     resultContent.innerHTML = '';
 
     let videos = [];
-    let thumbnail = data.cover || null;
-    let title = data.title || null;
-    let author = data.author?.nickname || data.author?.fullname || null;
+    let thumbnail = data.cover || data.thumbnail || null;
+    let title = data.title || data.caption || null;
+    let author = data.author?.nickname || data.author?.fullname || data.author?.unique_id || null;
     let stats = data.stats || null;
-    let duration = data.duration || data.durations + ' detik' || null;
-    let musicInfo = data.music_info || null;
+    let duration = data.duration || (data.durations ? data.durations + ' detik' : null);
 
     // Ambil video dari data.data (array)
     if (data.data && Array.isArray(data.data)) {
@@ -91,6 +186,7 @@ function displayResult(data) {
             if (item.url) {
                 let quality = item.type === 'nowatermark' ? 'No Watermark' : 
                               item.type === 'nowatermark_hd' ? 'HD No Watermark' : 
+                              item.type === 'music' ? 'Audio' :
                               item.type || 'Video';
                 videos.push({
                     url: item.url,
@@ -101,26 +197,46 @@ function displayResult(data) {
             }
         });
     }
-
-    // Ambil audio/music
-    if (musicInfo && musicInfo.url) {
+    
+    // Cek juga langsung dari play/hdplay
+    if (data.play && !videos.find(v => v.url === data.play)) {
         videos.push({
-            url: musicInfo.url,
-            quality: 'Audio',
+            url: data.play,
+            quality: 'No Watermark',
             size: 'Unknown',
-            type: 'music',
-            title: musicInfo.title,
-            author: musicInfo.author
+            type: 'nowatermark'
         });
     }
+    
+    if (data.hdplay && !videos.find(v => v.url === data.hdplay)) {
+        videos.push({
+            url: data.hdplay,
+            quality: 'HD No Watermark',
+            size: 'Unknown',
+            type: 'nowatermark_hd'
+        });
+    }
+    
+    // Ambil music
+    if (data.music || data.music_info?.url) {
+        const musicUrl = data.music || data.music_info?.url;
+        if (musicUrl && !videos.find(v => v.url === musicUrl)) {
+            videos.push({
+                url: musicUrl,
+                quality: 'Audio',
+                size: 'Unknown',
+                type: 'music'
+            });
+        }
+    }
 
-    // Tampilkan thumbnail, title, author, stats
+    // Tampilkan info card
     if (thumbnail || title || author) {
         const infoCard = document.createElement('div');
         infoCard.className = 'thumbnail-preview';
         infoCard.innerHTML = `
-            ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail">` : ''}
-            ${title ? `<div class="thumbnail-caption">${title.substring(0, 100)}${title.length > 100 ? '...' : ''}</div>` : ''}
+            ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail" onerror="this.style.display='none'">` : ''}
+            ${title ? `<div class="thumbnail-caption">${title.substring(0, 120)}${title.length > 120 ? '...' : ''}</div>` : ''}
             ${author ? `<div style="font-size: 11px; color: #64748b; margin-top: 6px;"><i class="fas fa-user"></i> ${author}</div>` : ''}
             ${duration ? `<div style="font-size: 11px; color: #64748b;"><i class="fas fa-clock"></i> ${duration}</div>` : ''}
             ${stats ? `
@@ -136,7 +252,7 @@ function displayResult(data) {
     }
 
     if (videos.length === 0) {
-        showError('Tidak ada video yang ditemukan');
+        showError('❌ Tidak ada video yang ditemukan. Coba link lain.');
         return;
     }
 
@@ -154,7 +270,6 @@ function displayResult(data) {
             </div>
             <div class="video-info">
                 <div>${typeLabel} - ${video.quality}</div>
-                ${video.title ? `<div style="font-size: 11px; color: #64748b;">${video.title.substring(0, 50)}</div>` : ''}
                 <div class="video-size">${video.size}</div>
             </div>
             <div class="download-icon">
@@ -175,11 +290,20 @@ function formatSize(bytes) {
     return `${mb.toFixed(1)} MB`;
 }
 
-// Download video
+// Download video dengan fallback
 async function downloadVideo(url, filename) {
-    showToast('Memulai download...');
+    showToast('⏬ Memulai download...');
+    
     try {
-        const res = await fetch(url);
+        // Coba fetch dulu pake proxy kalo perlu
+        let downloadUrl = url;
+        
+        // Kalo url dari tikwm, pake proxy
+        if (url.includes('tikwm.com')) {
+            downloadUrl = `https://cors-anywhere.herokuapp.com/${url}`;
+        }
+        
+        const res = await fetch(downloadUrl);
         if (res.ok) {
             const blob = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
@@ -190,13 +314,14 @@ async function downloadVideo(url, filename) {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(blobUrl);
-            showToast('Download dimulai!');
+            showToast('✅ Download dimulai!');
         } else {
             throw new Error();
         }
     } catch {
+        // Fallback: buka di tab baru
         window.open(url, '_blank');
-        showToast('Link dibuka di tab baru');
+        showToast('🔗 Link dibuka di tab baru');
     }
 }
 
@@ -220,11 +345,6 @@ function showToast(msg) {
     setTimeout(() => toast.remove(), 2000);
 }
 
-// Enter key
-urlInput.addEventListener('keypress', e => {
-    if (e.key === 'Enter') downloadBtn.click();
-});
-
 // Auto detect platform
 urlInput.addEventListener('input', e => {
     const url = e.target.value.toLowerCase();
@@ -245,7 +365,12 @@ urlInput.addEventListener('input', e => {
     }
 });
 
-// Tambahin CSS buat toast kalo belum ada
+// Enter key
+urlInput.addEventListener('keypress', e => {
+    if (e.key === 'Enter') downloadBtn.click();
+});
+
+// Tambahin CSS
 const style = document.createElement('style');
 style.textContent = `
     .toast-message {
