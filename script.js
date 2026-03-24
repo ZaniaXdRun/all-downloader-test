@@ -1,7 +1,6 @@
 // Konfigurasi
 const API_BASE = 'https://api.vreden.my.id/api';
 
-// Platform mapping ke endpoint
 const platformEndpoints = {
     tiktok: '/download/tiktok',
     instagram: '/download/instagram',
@@ -13,21 +12,19 @@ const platformEndpoints = {
 let currentPlatform = 'tiktok';
 
 // DOM Elements
-const platformBtns = document.querySelectorAll('.platform-btn');
+const platformBtns = document.querySelectorAll('.platform-chip');
 const urlInput = document.getElementById('urlInput');
 const downloadBtn = document.getElementById('downloadBtn');
 const loading = document.getElementById('loading');
 const resultArea = document.getElementById('resultArea');
 const resultContent = document.getElementById('resultContent');
 
-// Platform selector handler
+// Platform selector
 platformBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         platformBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentPlatform = btn.dataset.platform;
-        
-        // Clear result
         resultArea.style.display = 'none';
         resultContent.innerHTML = '';
     });
@@ -38,14 +35,13 @@ downloadBtn.addEventListener('click', async () => {
     const url = urlInput.value.trim();
     
     if (!url) {
-        showError('Masukkan link video terlebih dahulu!');
+        showError('Masukkan link video terlebih dahulu');
         return;
     }
 
-    // Reset UI
     resultArea.style.display = 'none';
     resultContent.innerHTML = '';
-    loading.style.display = 'block';
+    loading.style.display = 'flex';
     downloadBtn.disabled = true;
 
     try {
@@ -55,14 +51,21 @@ downloadBtn.addEventListener('click', async () => {
         const response = await fetch(apiUrl);
         const data = await response.json();
 
-        if (data.status && data.data) {
+        if (data && data.data) {
             displayResult(data.data);
+        } else if (data && data.result) {
+            displayResult(data.result);
+        } else if (data && data.video) {
+            displayResult(data);
+        } else if (data && data.url) {
+            displayResult(data);
+        } else if (data && data.status === true) {
+            displayResult(data.data || data);
         } else {
-            showError(data.message || 'Gagal memproses link. Coba lagi.');
+            showError(data.message || 'Gagal memproses link');
         }
     } catch (error) {
-        console.error('Error:', error);
-        showError('Terjadi kesalahan. Periksa koneksi internet Anda.');
+        showError('Koneksi error. Cek internet atau coba lagi');
     } finally {
         loading.style.display = 'none';
         downloadBtn.disabled = false;
@@ -75,91 +78,102 @@ function displayResult(data) {
     resultContent.innerHTML = '';
 
     let videos = [];
+    let thumbnail = null;
+    let title = null;
+
+    // Thumbnail
+    if (data.thumbnail) thumbnail = data.thumbnail;
+    if (data.thumb) thumbnail = data.thumb;
+    if (data.cover) thumbnail = data.cover;
+
+    // Title
+    if (data.title) title = data.title;
+    if (data.caption) title = data.caption;
+
+    // Parse videos
+    if (data.video && typeof data.video === 'string') {
+        videos.push({ url: data.video, quality: data.quality || 'HD', size: data.size || 'Unknown' });
+    }
     
-    if (data.video) {
-        videos = [{
-            url: data.video,
-            quality: data.quality || 'HD',
-            size: data.size || 'Unknown'
-        }];
-    } else if (data.videos && Array.isArray(data.videos)) {
-        videos = data.videos;
-    } else if (data.url) {
-        videos = [{
-            url: data.url,
-            quality: data.quality || 'SD',
-            size: data.size || 'Unknown'
-        }];
-    } else if (data.medias && Array.isArray(data.medias)) {
-        videos = data.medias.map(m => ({
-            url: m.url,
-            quality: m.quality || m.resolution || 'Unknown',
-            size: m.size || 'Unknown'
-        }));
-    } else if (typeof data === 'object') {
-        for (let key in data) {
-            if (typeof data[key] === 'string' && (data[key].startsWith('http') && (data[key].includes('.mp4') || data[key].includes('video')))) {
-                videos.push({
-                    url: data[key],
-                    quality: key,
-                    size: 'Unknown'
-                });
-            }
-        }
+    if (data.videos && Array.isArray(data.videos)) {
+        data.videos.forEach(v => {
+            videos.push({ url: v.url || v, quality: v.quality || 'SD', size: v.size || 'Unknown' });
+        });
+    }
+    
+    if (data.medias && Array.isArray(data.medias)) {
+        data.medias.forEach(m => {
+            if (m.url) videos.push({ url: m.url, quality: m.quality || 'SD', size: m.size || 'Unknown' });
+        });
+    }
+    
+    if (data.url && typeof data.url === 'string' && data.url.includes('.mp4')) {
+        videos.push({ url: data.url, quality: data.quality || 'SD', size: data.size || 'Unknown' });
+    }
+    
+    if (data.no_watermark && data.no_watermark.url) {
+        videos.push({ url: data.no_watermark.url, quality: 'No Watermark', size: data.no_watermark.size || 'Unknown' });
+    }
+    
+    if (data.watermark && data.watermark.url) {
+        videos.push({ url: data.watermark.url, quality: 'With Watermark', size: data.watermark.size || 'Unknown' });
     }
 
+    // Remove duplicates
+    const unique = [];
+    const seen = new Set();
+    for (const v of videos) {
+        if (!seen.has(v.url)) {
+            seen.add(v.url);
+            unique.push(v);
+        }
+    }
+    videos = unique;
+
     if (videos.length === 0) {
-        showError('Tidak ada video yang ditemukan.');
+        showError('Tidak ada video yang ditemukan');
         return;
     }
 
-    // Display videos
-    videos.forEach((video, index) => {
-        const videoEl = document.createElement('div');
-        videoEl.className = 'video-item';
-        videoEl.innerHTML = `
+    // Thumbnail
+    if (thumbnail) {
+        const thumbDiv = document.createElement('div');
+        thumbDiv.className = 'thumbnail-preview';
+        thumbDiv.innerHTML = `
+            <img src="${thumbnail}" onerror="this.style.display='none'">
+            ${title ? `<div class="thumbnail-caption">${title.substring(0, 80)}${title.length > 80 ? '...' : ''}</div>` : ''}
+        `;
+        resultContent.appendChild(thumbDiv);
+    }
+
+    // Video list
+    videos.forEach(video => {
+        const item = document.createElement('div');
+        item.className = 'video-item';
+        item.innerHTML = `
             <div class="video-quality">
-                <i class="fas fa-hd"></i> ${video.quality}
+                <i class="fas fa-video"></i> ${video.quality}
             </div>
             <div class="video-info">
-                <div>Kualitas ${video.quality}</div>
+                <div>${video.quality}</div>
                 <div class="video-size">${video.size}</div>
             </div>
             <div class="download-icon">
                 <i class="fas fa-download"></i>
             </div>
         `;
-        
-        videoEl.addEventListener('click', () => {
-            downloadVideo(video.url, `${currentPlatform}_${video.quality}_${Date.now()}.mp4`);
-        });
-        
-        resultContent.appendChild(videoEl);
+        item.onclick = () => downloadVideo(video.url, `${currentPlatform}_${video.quality}_${Date.now()}.mp4`);
+        resultContent.appendChild(item);
     });
-
-    // Add thumbnail if exists
-    if (data.thumbnail) {
-        const thumbEl = document.createElement('div');
-        thumbEl.style.cssText = `
-            background: rgba(0,255,255,0.1);
-            border-radius: 16px;
-            padding: 12px;
-            margin-bottom: 16px;
-            text-align: center;
-        `;
-        thumbEl.innerHTML = `
-            <img src="${data.thumbnail}" style="max-width: 100%; border-radius: 12px;" alt="Thumbnail">
-            ${data.title ? `<div style="margin-top: 8px; font-size: 12px; color: #00ccff;">${data.title.substring(0, 100)}</div>` : ''}
-        `;
-        resultContent.insertBefore(thumbEl, resultContent.firstChild);
-    }
 }
 
 // Download video
-function downloadVideo(url, filename) {
-    fetch(url)
-        .then(response => response.blob())
-        .then(blob => {
+async function downloadVideo(url, filename) {
+    showToast('Memulai download...');
+    try {
+        const res = await fetch(url);
+        if (res.ok) {
+            const blob = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = blobUrl;
@@ -168,53 +182,57 @@ function downloadVideo(url, filename) {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(blobUrl);
-        })
-        .catch(error => {
-            window.open(url, '_blank');
-        });
+            showToast('Download dimulai');
+        } else {
+            throw new Error();
+        }
+    } catch {
+        window.open(url, '_blank');
+        showToast('Link dibuka di tab baru');
+    }
 }
 
-// Show error message
-function showError(message) {
+// Show error
+function showError(msg) {
     resultArea.style.display = 'block';
     resultContent.innerHTML = `
         <div class="error-message">
-            <i class="fas fa-exclamation-triangle"></i>
-            ${message}
+            <i class="fas fa-exclamation-circle"></i>
+            ${msg}
         </div>
     `;
 }
 
-// Enter key handler
-urlInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        downloadBtn.click();
-    }
-});
-
-// Auto-detect platform dari URL
-urlInput.addEventListener('input', (e) => {
-    const url = e.target.value.toLowerCase();
-    
-    if (url.includes('tiktok.com')) {
-        setActivePlatform('tiktok');
-    } else if (url.includes('instagram.com')) {
-        setActivePlatform('instagram');
-    } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        setActivePlatform('youtube');
-    } else if (url.includes('facebook.com') || url.includes('fb.com')) {
-        setActivePlatform('facebook');
-    } else if (url.includes('twitter.com') || url.includes('x.com')) {
-        setActivePlatform('twitter');
-    }
-});
-
-function setActivePlatform(platform) {
-    if (currentPlatform !== platform) {
-        platformBtns.forEach(btn => {
-            if (btn.dataset.platform === platform) {
-                btn.click();
-            }
-        });
-    }
+// Show toast
+function showToast(msg) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-message';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
 }
+
+// Enter key
+urlInput.addEventListener('keypress', e => {
+    if (e.key === 'Enter') downloadBtn.click();
+});
+
+// Auto detect platform
+urlInput.addEventListener('input', e => {
+    const url = e.target.value.toLowerCase();
+    const patterns = {
+        tiktok: ['tiktok.com', 'vm.tiktok'],
+        instagram: ['instagram.com'],
+        youtube: ['youtube.com', 'youtu.be'],
+        facebook: ['facebook.com', 'fb.com'],
+        twitter: ['twitter.com', 'x.com']
+    };
+    for (const [platform, keywords] of Object.entries(patterns)) {
+        if (keywords.some(k => url.includes(k))) {
+            platformBtns.forEach(btn => {
+                if (btn.dataset.platform === platform) btn.click();
+            });
+            break;
+        }
+    }
+});
