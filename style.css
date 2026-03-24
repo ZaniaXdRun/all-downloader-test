@@ -14,18 +14,15 @@ body {
     padding: 20px;
 }
 
-/* Card Utama */
 .downloader-card {
-    max-width: 560px;
+    max-width: 620px;
     width: 100%;
     background: #ffffff;
     border-radius: 32px;
     padding: 32px 28px;
     box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.02);
-    transition: all 0.2s ease;
 }
 
-/* Header */
 .card-header {
     text-align: center;
     margin-bottom: 28px;
@@ -62,7 +59,6 @@ h1 {
     font-weight: 400;
 }
 
-/* Platform Grid */
 .platform-grid {
     display: flex;
     flex-wrap: wrap;
@@ -90,7 +86,6 @@ h1 {
 .platform-chip i {
     font-size: 14px;
     color: #5b6e8c;
-    transition: color 0.2s;
 }
 
 .platform-chip.active {
@@ -107,7 +102,6 @@ h1 {
     transform: translateY(-1px);
 }
 
-/* Input Field */
 .input-field {
     position: relative;
     margin-bottom: 20px;
@@ -146,7 +140,6 @@ input::placeholder {
     color: #94a3b8;
 }
 
-/* Download Button */
 .download-button {
     width: 100%;
     padding: 14px;
@@ -181,7 +174,6 @@ input::placeholder {
     cursor: not-allowed;
 }
 
-/* Loading State */
 .loading-state {
     display: none;
     align-items: center;
@@ -208,7 +200,6 @@ input::placeholder {
     to { transform: rotate(360deg); }
 }
 
-/* Result Panel */
 .result-panel {
     display: none;
     background: #f8fafc;
@@ -237,7 +228,6 @@ input::placeholder {
     overflow-y: auto;
 }
 
-/* Video Item */
 .video-item {
     background: white;
     border-radius: 18px;
@@ -304,7 +294,6 @@ input::placeholder {
     opacity: 1;
 }
 
-/* Thumbnail Preview */
 .thumbnail-preview {
     background: white;
     border-radius: 20px;
@@ -329,7 +318,6 @@ input::placeholder {
     word-break: break-word;
 }
 
-/* Error Message */
 .error-message {
     background: #fef2f2;
     border-radius: 18px;
@@ -346,7 +334,6 @@ input::placeholder {
     font-size: 18px;
 }
 
-/* Footer */
 .card-footer {
     text-align: center;
     margin-top: 24px;
@@ -363,7 +350,6 @@ input::placeholder {
     font-size: 11px;
 }
 
-/* Scrollbar */
 .result-list::-webkit-scrollbar {
     width: 4px;
 }
@@ -378,7 +364,6 @@ input::placeholder {
     border-radius: 10px;
 }
 
-/* Toast */
 .toast-message {
     position: fixed;
     bottom: 30px;
@@ -403,7 +388,6 @@ input::placeholder {
     100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 }
 
-/* Responsive */
 @media (max-width: 500px) {
     .downloader-card {
         padding: 24px 20px;

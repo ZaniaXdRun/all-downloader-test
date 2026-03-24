@@ -1,13 +1,16 @@
-// Konfigurasi
-const API_BASE = 'https://api.vreden.my.id/api';
-const CORS_PROXIES = [
-    'https://cors-anywhere.herokuapp.com/',
-    'https://api.allorigins.win/raw?url=',
-    'https://thingproxy.freeboard.io/fetch/'
-];
+// Konfigurasi - PAKE ENDPOINT YANG BENER
+const API_BASE = 'https://api.vreden.my.id/api/download';
+
+const platformEndpoints = {
+    tiktok: '/tiktok',
+    instagram: '/instagram',
+    youtube: '/youtube',
+    facebook: '/facebook',
+    twitter: '/twitter',
+    pinterest: '/pinterest'
+};
 
 let currentPlatform = 'tiktok';
-let currentProxyIndex = 0;
 
 // DOM Elements
 const platformBtns = document.querySelectorAll('.platform-chip');
@@ -28,45 +31,28 @@ platformBtns.forEach(btn => {
     });
 });
 
-// Fetch dengan CORS proxy dan retry
-async function fetchWithProxy(url, retries = 2) {
-    for (let i = 0; i <= retries; i++) {
-        try {
-            let fetchUrl = url;
-            
-            // Pake proxy kalo langsung gagal
-            if (i > 0) {
-                const proxy = CORS_PROXIES[currentProxyIndex % CORS_PROXIES.length];
-                fetchUrl = proxy + encodeURIComponent(url);
-                currentProxyIndex++;
-                console.log(`🔄 Using proxy: ${proxy}`);
+// Fetch dengan timeout
+async function fetchWithTimeout(url, timeout = 15000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+        const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+                'Accept': 'application/json'
             }
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-            
-            const response = await fetch(fetchUrl, {
-                signal: controller.signal,
-                headers: {
-                    'Accept': 'application/json',
-                    'Origin': window.location.origin
-                }
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data;
-            
-        } catch (error) {
-            console.log(`Attempt ${i + 1} failed:`, error.message);
-            if (i === retries) throw error;
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        });
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
+        
+        return await response.json();
+    } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
     }
 }
 
@@ -76,6 +62,22 @@ downloadBtn.addEventListener('click', async () => {
     
     if (!url) {
         showError('🔗 Masukkan link video terlebih dahulu');
+        return;
+    }
+
+    // Validasi link berdasarkan platform
+    const validations = {
+        tiktok: /(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)/i,
+        instagram: /(instagram\.com|instagr\.am)/i,
+        youtube: /(youtube\.com|youtu\.be)/i,
+        facebook: /(facebook\.com|fb\.com|fb\.watch)/i,
+        twitter: /(twitter\.com|x\.com)/i,
+        pinterest: /(pinterest\.com|pin\.it)/i
+    };
+    
+    const validator = validations[currentPlatform];
+    if (validator && !validator.test(url)) {
+        showError(`❌ Link bukan ${currentPlatform.charAt(0).toUpperCase() + currentPlatform.slice(1)}!`);
         return;
     }
 
@@ -90,17 +92,27 @@ downloadBtn.addEventListener('click', async () => {
         
         console.log('📡 Fetching:', apiUrl);
         
-        const data = await fetchWithProxy(apiUrl);
+        const data = await fetchWithTimeout(apiUrl, 15000);
         console.log('✅ Response:', data);
 
         if (data.status === true && data.result) {
-            displayResult(data.result);
-        } else if (data.data) {
-            displayResult(data.data);
+            if (currentPlatform === 'twitter') {
+                displayTwitterResult(data.result);
+            } else if (currentPlatform === 'pinterest') {
+                displayPinterestResult(data.result);
+            } else {
+                displayTikTokResult(data.result);
+            }
+        } else if (data.data && data.data.result) {
+            displayTikTokResult(data.data.result);
         } else if (data.result) {
-            displayResult(data.result);
-        } else if (data.video) {
-            displayResult(data);
+            if (currentPlatform === 'twitter') {
+                displayTwitterResult(data.result);
+            } else if (currentPlatform === 'pinterest') {
+                displayPinterestResult(data.result);
+            } else {
+                displayTikTokResult(data.result);
+            }
         } else {
             showError(`⚠️ Gagal: ${data.message || 'Format response tidak dikenali'}`);
         }
@@ -108,75 +120,32 @@ downloadBtn.addEventListener('click', async () => {
     } catch (error) {
         console.error('❌ Error:', error);
         
-        // Coba fallback ke API alternatif
-        try {
-            showToast('Mencoba server cadangan...');
-            const fallbackData = await fallbackFetch(url);
-            if (fallbackData) {
-                displayResult(fallbackData);
-                return;
-            }
-        } catch (e) {
-            console.log('Fallback failed:', e);
+        if (error.name === 'AbortError') {
+            showError('⏰ Timeout! Server terlalu lama merespons. Coba lagi.');
+        } else if (error.message.includes('HTTP 400')) {
+            showError('❌ Link tidak valid atau konten tidak ditemukan');
+        } else if (error.message.includes('HTTP 403')) {
+            showError('🚫 Akses ditolak. Coba link yang berbeda.');
+        } else if (error.message.includes('Failed to fetch')) {
+            showError('⚠️ Tidak bisa konek ke server. Cek koneksi internet.');
+        } else {
+            showError(`⚠️ Error: ${error.message}`);
         }
-        
-        showError('⚠️ Gagal konek ke server. Coba lagi nanti atau cek internet.');
     } finally {
         loading.style.display = 'none';
         downloadBtn.disabled = false;
     }
 });
 
-// Fallback API (TikWM langsung pake proxy)
-async function fallbackFetch(url) {
-    const tikwmUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
-    const proxyUrl = `https://cors-anywhere.herokuapp.com/${tikwmUrl}`;
-    
-    try {
-        const response = await fetch(proxyUrl, {
-            headers: {
-                'Origin': 'https://www.tikwm.com'
-            }
-        });
-        const data = await response.json();
-        
-        if (data.code === 0 && data.data) {
-            return {
-                title: data.data.title,
-                cover: data.data.cover,
-                duration: data.data.duration,
-                author: data.data.author,
-                data: [
-                    { type: 'nowatermark', url: data.data.play },
-                    { type: 'nowatermark_hd', url: data.data.hdplay },
-                    { type: 'music', url: data.data.music }
-                ]
-            };
-        }
-        return null;
-    } catch {
-        return null;
-    }
-}
-
-// Platform endpoints
-const platformEndpoints = {
-    tiktok: '/download/tiktok',
-    instagram: '/download/instagram',
-    youtube: '/download/youtube',
-    facebook: '/download/facebook',
-    twitter: '/download/twitter'
-};
-
-// Display result
-function displayResult(data) {
+// Display TikTok/IG/YT/FB result
+function displayTikTokResult(data) {
     resultArea.style.display = 'block';
     resultContent.innerHTML = '';
 
     let videos = [];
     let thumbnail = data.cover || data.thumbnail || null;
     let title = data.title || data.caption || null;
-    let author = data.author?.nickname || data.author?.fullname || data.author?.unique_id || null;
+    let author = data.author?.nickname || data.author?.fullname || null;
     let stats = data.stats || null;
     let duration = data.duration || (data.durations ? data.durations + ' detik' : null);
 
@@ -188,17 +157,19 @@ function displayResult(data) {
                               item.type === 'nowatermark_hd' ? 'HD No Watermark' : 
                               item.type === 'music' ? 'Audio' :
                               item.type || 'Video';
+                let size = item.size ? formatSize(item.size) : 'Unknown';
+                
                 videos.push({
                     url: item.url,
                     quality: quality,
-                    size: item.size ? formatSize(item.size) : 'Unknown',
+                    size: size,
                     type: item.type
                 });
             }
         });
     }
     
-    // Cek juga langsung dari play/hdplay
+    // Cek juga langsung dari play/hdplay (fallback)
     if (data.play && !videos.find(v => v.url === data.play)) {
         videos.push({
             url: data.play,
@@ -240,7 +211,7 @@ function displayResult(data) {
             ${author ? `<div style="font-size: 11px; color: #64748b; margin-top: 6px;"><i class="fas fa-user"></i> ${author}</div>` : ''}
             ${duration ? `<div style="font-size: 11px; color: #64748b;"><i class="fas fa-clock"></i> ${duration}</div>` : ''}
             ${stats ? `
-                <div style="display: flex; gap: 12px; margin-top: 10px; font-size: 11px; color: #475569;">
+                <div style="display: flex; gap: 12px; margin-top: 10px; font-size: 11px; color: #475569; flex-wrap: wrap;">
                     ${stats.views ? `<span><i class="fas fa-eye"></i> ${stats.views}</span>` : ''}
                     ${stats.likes ? `<span><i class="fas fa-heart"></i> ${stats.likes}</span>` : ''}
                     ${stats.comment ? `<span><i class="fas fa-comment"></i> ${stats.comment}</span>` : ''}
@@ -282,6 +253,128 @@ function displayResult(data) {
     });
 }
 
+// Display Twitter/X result
+function displayTwitterResult(data) {
+    resultArea.style.display = 'block';
+    resultContent.innerHTML = '';
+
+    let videos = [];
+    let thumbnail = data.cover || data.thumbnail || null;
+    let title = data.title || data.caption || null;
+    let author = data.author?.username || data.author?.name || null;
+
+    // Ambil video dari data.data
+    if (data.data && Array.isArray(data.data)) {
+        data.data.forEach(item => {
+            if (item.url) {
+                let quality = item.type === 'nowatermark_hd' ? 'HD' : 
+                              item.type === 'nowatermark' ? 'SD' : 
+                              item.type || 'Video';
+                videos.push({
+                    url: item.url,
+                    quality: quality,
+                    size: item.size ? formatSize(item.size) : 'Unknown',
+                    type: item.type
+                });
+            }
+        });
+    }
+
+    // Tampilkan info
+    if (thumbnail || title || author) {
+        const infoCard = document.createElement('div');
+        infoCard.className = 'thumbnail-preview';
+        infoCard.innerHTML = `
+            ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail" onerror="this.style.display='none'">` : ''}
+            ${title ? `<div class="thumbnail-caption">${title.substring(0, 100)}${title.length > 100 ? '...' : ''}</div>` : ''}
+            ${author ? `<div style="font-size: 11px; color: #1da1f2; margin-top: 6px;"><i class="fab fa-twitter"></i> @${author}</div>` : ''}
+        `;
+        resultContent.appendChild(infoCard);
+    }
+
+    if (videos.length === 0) {
+        showError('❌ Tidak ada video yang ditemukan di tweet ini.');
+        return;
+    }
+
+    videos.forEach(video => {
+        const item = document.createElement('div');
+        item.className = 'video-item';
+        item.innerHTML = `
+            <div class="video-quality">
+                <i class="fab fa-twitter"></i> ${video.quality}
+            </div>
+            <div class="video-info">
+                <div>Twitter Video - ${video.quality}</div>
+                <div class="video-size">${video.size}</div>
+            </div>
+            <div class="download-icon">
+                <i class="fas fa-download"></i>
+            </div>
+        `;
+        item.onclick = () => downloadVideo(video.url, `twitter_${Date.now()}.mp4`);
+        resultContent.appendChild(item);
+    });
+}
+
+// Display Pinterest result
+function displayPinterestResult(data) {
+    resultArea.style.display = 'block';
+    resultContent.innerHTML = '';
+
+    let mediaUrl = null;
+    let isVideo = false;
+    let thumbnail = null;
+
+    // Cek apakah video atau gambar
+    if (data.video || data.url?.includes('.mp4')) {
+        mediaUrl = data.video || data.url;
+        isVideo = true;
+        thumbnail = data.thumbnail || data.cover;
+    } else if (data.image || data.url) {
+        mediaUrl = data.image || data.url;
+        isVideo = false;
+    }
+
+    if (!mediaUrl) {
+        showError('❌ Tidak ada media yang ditemukan.');
+        return;
+    }
+
+    // Tampilkan preview
+    if (thumbnail && isVideo) {
+        const thumbDiv = document.createElement('div');
+        thumbDiv.className = 'thumbnail-preview';
+        thumbDiv.innerHTML = `<img src="${thumbnail}" alt="Preview">`;
+        resultContent.appendChild(thumbDiv);
+    }
+
+    // Tombol download
+    const item = document.createElement('div');
+    item.className = 'video-item';
+    item.innerHTML = `
+        <div class="video-quality">
+            <i class="fab fa-pinterest"></i> ${isVideo ? 'Video' : 'Gambar'}
+        </div>
+        <div class="video-info">
+            <div>Pinterest ${isVideo ? 'Video' : 'Image'}</div>
+            <div class="video-size">Klik untuk download</div>
+        </div>
+        <div class="download-icon">
+            <i class="fas fa-download"></i>
+        </div>
+    `;
+    item.onclick = () => downloadMedia(mediaUrl, `pinterest_${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`);
+    resultContent.appendChild(item);
+}
+
+// Download media untuk Pinterest
+function downloadMedia(url, filename) {
+    showToast('⏬ Memulai download...');
+    window.open(url, '_blank');
+    showToast('🔗 Link dibuka di tab baru');
+}
+
 // Format file size
 function formatSize(bytes) {
     if (!bytes || bytes === 0) return 'Unknown';
@@ -290,20 +383,12 @@ function formatSize(bytes) {
     return `${mb.toFixed(1)} MB`;
 }
 
-// Download video dengan fallback
+// Download video
 async function downloadVideo(url, filename) {
     showToast('⏬ Memulai download...');
     
     try {
-        // Coba fetch dulu pake proxy kalo perlu
-        let downloadUrl = url;
-        
-        // Kalo url dari tikwm, pake proxy
-        if (url.includes('tikwm.com')) {
-            downloadUrl = `https://cors-anywhere.herokuapp.com/${url}`;
-        }
-        
-        const res = await fetch(downloadUrl);
+        const res = await fetch(url);
         if (res.ok) {
             const blob = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
@@ -319,7 +404,6 @@ async function downloadVideo(url, filename) {
             throw new Error();
         }
     } catch {
-        // Fallback: buka di tab baru
         window.open(url, '_blank');
         showToast('🔗 Link dibuka di tab baru');
     }
@@ -353,7 +437,8 @@ urlInput.addEventListener('input', e => {
         instagram: ['instagram.com', 'instagr.am'],
         youtube: ['youtube.com', 'youtu.be'],
         facebook: ['facebook.com', 'fb.com', 'fb.watch'],
-        twitter: ['twitter.com', 'x.com']
+        twitter: ['twitter.com', 'x.com'],
+        pinterest: ['pinterest.com', 'pin.it']
     };
     for (const [platform, keywords] of Object.entries(patterns)) {
         if (keywords.some(k => url.includes(k))) {
@@ -369,32 +454,3 @@ urlInput.addEventListener('input', e => {
 urlInput.addEventListener('keypress', e => {
     if (e.key === 'Enter') downloadBtn.click();
 });
-
-// Tambahin CSS
-const style = document.createElement('style');
-style.textContent = `
-    .toast-message {
-        position: fixed;
-        bottom: 30px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #0f172a;
-        color: white;
-        padding: 12px 24px;
-        border-radius: 100px;
-        font-size: 13px;
-        font-weight: 500;
-        z-index: 1000;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
-        animation: fadeInOut 2s ease forwards;
-        white-space: nowrap;
-    }
-    
-    @keyframes fadeInOut {
-        0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
-        15% { opacity: 1; transform: translateX(-50%) translateY(0); }
-        85% { opacity: 1; transform: translateX(-50%) translateY(0); }
-        100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-    }
-`;
-document.head.appendChild(style);
