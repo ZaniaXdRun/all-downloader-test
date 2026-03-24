@@ -51,20 +51,20 @@ downloadBtn.addEventListener('click', async () => {
         const response = await fetch(apiUrl);
         const data = await response.json();
 
-        if (data && data.data) {
-            displayResult(data.data);
-        } else if (data && data.result) {
+        console.log('Response:', data);
+
+        if (data.status === true && data.result) {
             displayResult(data.result);
-        } else if (data && data.video) {
-            displayResult(data);
-        } else if (data && data.url) {
-            displayResult(data);
-        } else if (data && data.status === true) {
-            displayResult(data.data || data);
+        } else if (data.data) {
+            displayResult(data.data);
+        } else if (data.result) {
+            displayResult(data.result);
         } else {
             showError(data.message || 'Gagal memproses link');
         }
+        
     } catch (error) {
+        console.error('Error:', error);
         showError('Koneksi error. Cek internet atau coba lagi');
     } finally {
         loading.style.display = 'none';
@@ -72,99 +72,107 @@ downloadBtn.addEventListener('click', async () => {
     }
 });
 
-// Display result
+// Display result - KHUSUS UNTUK FORMAT TIKTOK
 function displayResult(data) {
     resultArea.style.display = 'block';
     resultContent.innerHTML = '';
 
     let videos = [];
-    let thumbnail = null;
-    let title = null;
+    let thumbnail = data.cover || null;
+    let title = data.title || null;
+    let author = data.author?.nickname || data.author?.fullname || null;
+    let stats = data.stats || null;
+    let duration = data.duration || data.durations + ' detik' || null;
+    let musicInfo = data.music_info || null;
 
-    // Thumbnail
-    if (data.thumbnail) thumbnail = data.thumbnail;
-    if (data.thumb) thumbnail = data.thumb;
-    if (data.cover) thumbnail = data.cover;
-
-    // Title
-    if (data.title) title = data.title;
-    if (data.caption) title = data.caption;
-
-    // Parse videos
-    if (data.video && typeof data.video === 'string') {
-        videos.push({ url: data.video, quality: data.quality || 'HD', size: data.size || 'Unknown' });
-    }
-    
-    if (data.videos && Array.isArray(data.videos)) {
-        data.videos.forEach(v => {
-            videos.push({ url: v.url || v, quality: v.quality || 'SD', size: v.size || 'Unknown' });
+    // Ambil video dari data.data (array)
+    if (data.data && Array.isArray(data.data)) {
+        data.data.forEach(item => {
+            if (item.url) {
+                let quality = item.type === 'nowatermark' ? 'No Watermark' : 
+                              item.type === 'nowatermark_hd' ? 'HD No Watermark' : 
+                              item.type || 'Video';
+                videos.push({
+                    url: item.url,
+                    quality: quality,
+                    size: item.size ? formatSize(item.size) : 'Unknown',
+                    type: item.type
+                });
+            }
         });
     }
-    
-    if (data.medias && Array.isArray(data.medias)) {
-        data.medias.forEach(m => {
-            if (m.url) videos.push({ url: m.url, quality: m.quality || 'SD', size: m.size || 'Unknown' });
+
+    // Ambil audio/music
+    if (musicInfo && musicInfo.url) {
+        videos.push({
+            url: musicInfo.url,
+            quality: 'Audio',
+            size: 'Unknown',
+            type: 'music',
+            title: musicInfo.title,
+            author: musicInfo.author
         });
     }
-    
-    if (data.url && typeof data.url === 'string' && data.url.includes('.mp4')) {
-        videos.push({ url: data.url, quality: data.quality || 'SD', size: data.size || 'Unknown' });
-    }
-    
-    if (data.no_watermark && data.no_watermark.url) {
-        videos.push({ url: data.no_watermark.url, quality: 'No Watermark', size: data.no_watermark.size || 'Unknown' });
-    }
-    
-    if (data.watermark && data.watermark.url) {
-        videos.push({ url: data.watermark.url, quality: 'With Watermark', size: data.watermark.size || 'Unknown' });
-    }
 
-    // Remove duplicates
-    const unique = [];
-    const seen = new Set();
-    for (const v of videos) {
-        if (!seen.has(v.url)) {
-            seen.add(v.url);
-            unique.push(v);
-        }
+    // Tampilkan thumbnail, title, author, stats
+    if (thumbnail || title || author) {
+        const infoCard = document.createElement('div');
+        infoCard.className = 'thumbnail-preview';
+        infoCard.innerHTML = `
+            ${thumbnail ? `<img src="${thumbnail}" alt="Thumbnail">` : ''}
+            ${title ? `<div class="thumbnail-caption">${title.substring(0, 100)}${title.length > 100 ? '...' : ''}</div>` : ''}
+            ${author ? `<div style="font-size: 11px; color: #64748b; margin-top: 6px;"><i class="fas fa-user"></i> ${author}</div>` : ''}
+            ${duration ? `<div style="font-size: 11px; color: #64748b;"><i class="fas fa-clock"></i> ${duration}</div>` : ''}
+            ${stats ? `
+                <div style="display: flex; gap: 12px; margin-top: 10px; font-size: 11px; color: #475569;">
+                    ${stats.views ? `<span><i class="fas fa-eye"></i> ${stats.views}</span>` : ''}
+                    ${stats.likes ? `<span><i class="fas fa-heart"></i> ${stats.likes}</span>` : ''}
+                    ${stats.comment ? `<span><i class="fas fa-comment"></i> ${stats.comment}</span>` : ''}
+                    ${stats.share ? `<span><i class="fas fa-share"></i> ${stats.share}</span>` : ''}
+                </div>
+            ` : ''}
+        `;
+        resultContent.appendChild(infoCard);
     }
-    videos = unique;
 
     if (videos.length === 0) {
         showError('Tidak ada video yang ditemukan');
         return;
     }
 
-    // Thumbnail
-    if (thumbnail) {
-        const thumbDiv = document.createElement('div');
-        thumbDiv.className = 'thumbnail-preview';
-        thumbDiv.innerHTML = `
-            <img src="${thumbnail}" onerror="this.style.display='none'">
-            ${title ? `<div class="thumbnail-caption">${title.substring(0, 80)}${title.length > 80 ? '...' : ''}</div>` : ''}
-        `;
-        resultContent.appendChild(thumbDiv);
-    }
-
-    // Video list
+    // Tampilkan daftar download
     videos.forEach(video => {
         const item = document.createElement('div');
         item.className = 'video-item';
+        
+        const icon = video.type === 'music' ? 'fa-music' : 'fa-video';
+        const typeLabel = video.type === 'music' ? '🎵 Audio' : '📹 Video';
+        
         item.innerHTML = `
             <div class="video-quality">
-                <i class="fas fa-video"></i> ${video.quality}
+                <i class="fas ${icon}"></i> ${video.quality}
             </div>
             <div class="video-info">
-                <div>${video.quality}</div>
+                <div>${typeLabel} - ${video.quality}</div>
+                ${video.title ? `<div style="font-size: 11px; color: #64748b;">${video.title.substring(0, 50)}</div>` : ''}
                 <div class="video-size">${video.size}</div>
             </div>
             <div class="download-icon">
                 <i class="fas fa-download"></i>
             </div>
         `;
-        item.onclick = () => downloadVideo(video.url, `${currentPlatform}_${video.quality}_${Date.now()}.mp4`);
+        
+        item.onclick = () => downloadVideo(video.url, `${currentPlatform}_${video.quality.replace(/\s+/g, '_')}_${Date.now()}.mp4`);
         resultContent.appendChild(item);
     });
+}
+
+// Format file size
+function formatSize(bytes) {
+    if (!bytes || bytes === 0) return 'Unknown';
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${mb.toFixed(1)} MB`;
 }
 
 // Download video
@@ -182,7 +190,7 @@ async function downloadVideo(url, filename) {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(blobUrl);
-            showToast('Download dimulai');
+            showToast('Download dimulai!');
         } else {
             throw new Error();
         }
@@ -221,10 +229,10 @@ urlInput.addEventListener('keypress', e => {
 urlInput.addEventListener('input', e => {
     const url = e.target.value.toLowerCase();
     const patterns = {
-        tiktok: ['tiktok.com', 'vm.tiktok'],
-        instagram: ['instagram.com'],
+        tiktok: ['tiktok.com', 'vm.tiktok', 'vt.tiktok'],
+        instagram: ['instagram.com', 'instagr.am'],
         youtube: ['youtube.com', 'youtu.be'],
-        facebook: ['facebook.com', 'fb.com'],
+        facebook: ['facebook.com', 'fb.com', 'fb.watch'],
         twitter: ['twitter.com', 'x.com']
     };
     for (const [platform, keywords] of Object.entries(patterns)) {
@@ -236,3 +244,32 @@ urlInput.addEventListener('input', e => {
         }
     }
 });
+
+// Tambahin CSS buat toast kalo belum ada
+const style = document.createElement('style');
+style.textContent = `
+    .toast-message {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #0f172a;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 100px;
+        font-size: 13px;
+        font-weight: 500;
+        z-index: 1000;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        animation: fadeInOut 2s ease forwards;
+        white-space: nowrap;
+    }
+    
+    @keyframes fadeInOut {
+        0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+        15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+        85% { opacity: 1; transform: translateX(-50%) translateY(0); }
+        100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    }
+`;
+document.head.appendChild(style);
